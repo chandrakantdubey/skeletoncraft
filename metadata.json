@@ -1,0 +1,5 @@
+{
+  "name": "Skeleton Craft",
+  "description": "A powerful and intuitive web application for visually creating, customizing, and exporting beautiful, animated loading skeletons, spinners, and loaders for any web project. Supports export to React, Vue, Svelte, Angular, and pure HTML/CSS.",
+  "requestFramePermissions": []
+}
