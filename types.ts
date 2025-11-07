@@ -28,6 +28,8 @@ export interface SkeletonElement {
   borderRadius: number;
   color: string;
   animation: AnimationType;
+  zIndex: number;
+  locked: boolean;
 }
 
 export enum PresetCategory {
@@ -38,7 +40,7 @@ export enum PresetCategory {
 
 export interface SkeletonPreset {
     name: string;
-    elements: Omit<SkeletonElement, 'id'>[];
+    elements: Omit<SkeletonElement, 'id' | 'zIndex' | 'locked'>[];
 }
 
 export interface LoaderSpinnerPreset {
