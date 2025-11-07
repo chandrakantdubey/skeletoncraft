@@ -32,7 +32,8 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
   const { theme } = useTheme();
   
   const getCanvasRelativeCoords = useCallback((e: MouseEvent | React.MouseEvent) => {
-      const canvasBounds = canvasRef.current!.getBoundingClientRect();
+      if (!canvasRef.current) return { x: 0, y: 0 };
+      const canvasBounds = canvasRef.current.getBoundingClientRect();
       return {
           x: e.clientX - canvasBounds.left,
           y: e.clientY - canvasBounds.top,
@@ -51,7 +52,7 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
           x: Math.round(x - 50),
           y: Math.round(y - 25),
           animation: AnimationType.PULSE,
-          color: 'bg-slate-700',
+          color: theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200',
       };
 
       if (type === ElementType.RECT) {
@@ -63,7 +64,7 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
       }
       onAddElement(newElement);
       if(dropTargetRef.current) dropTargetRef.current.classList.add('hidden');
-  }, [getCanvasRelativeCoords, onAddElement]);
+  }, [getCanvasRelativeCoords, onAddElement, theme]);
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
@@ -82,6 +83,7 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
 
     if (resizeHandle && selectedElementIds.length === 1) {
         const element = elements.find(el => el.id === selectedElementIds[0])!;
+        if (element.locked) return;
         setDragState({
             type: 'resize',
             id: element.id,
@@ -97,16 +99,18 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
             onSelectElements([elementId], e.metaKey || e.ctrlKey);
         }
         
-        const currentSelected = (e.metaKey || e.ctrlKey) && isSelected ? [...selectedElementIds] : !isSelected && (e.metaKey || e.ctrlKey) ? [...selectedElementIds, elementId] : [elementId];
+        const currentSelected = (e.metaKey || e.ctrlKey) && isSelected ? selectedElementIds.filter(id => id !== elementId) : !isSelected && (e.metaKey || e.ctrlKey) ? [...selectedElementIds, elementId] : [elementId];
 
         const startPositions = new Map<string, {x: number, y: number}>();
         elements.forEach(el => {
-            if (currentSelected.includes(el.id)) {
+            if (currentSelected.includes(el.id) && !el.locked) {
                 startPositions.set(el.id, { x: el.x, y: el.y });
             }
         });
 
-        setDragState({ type: 'move', startPositions, startMouse: { x, y } });
+        if (startPositions.size > 0) {
+            setDragState({ type: 'move', startPositions, startMouse: { x, y } });
+        }
     } else { // Clicked on canvas
         onSelectElements([]);
         setMarquee({ x1: x, y1: y, x2: x, y2: y });
@@ -144,19 +148,25 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
             newY = dragState.startRect.y + dy;
         }
 
-        if (newWidth < 10) { newX = dragState.startRect.x + dragState.startRect.width - 10; }
-        if (newHeight < 10) { newY = dragState.startRect.y + dragState.startRect.height - 10; }
-
-        const element = elements.find(el => el.id === dragState.id);
-        const updates: Partial<SkeletonElement> = { x: Math.round(newX), y: Math.round(newY), width: Math.round(newWidth), height: Math.round(newHeight) };
-        if (element?.type === ElementType.CIRCLE) {
-            updates.borderRadius = Math.round(Math.max(newWidth, newHeight) / 2);
+        if (newWidth < 10) {
+            newX = dragState.startRect.x + dragState.startRect.width - 10;
+            newWidth = 10;
         }
-        onUpdateElements([dragState.id], updates);
+        if (newHeight < 10) {
+            newY = dragState.startRect.y + dragState.startRect.height - 10;
+            newHeight = 10;
+        }
+
+        onUpdateElements([dragState.id], {
+            x: Math.round(newX),
+            y: Math.round(newY),
+            width: Math.round(newWidth),
+            height: Math.round(newHeight),
+        });
     } else if (marquee) {
         setMarquee({ ...marquee, x2: x, y2: y });
     }
-  }, [dragState, marquee, getCanvasRelativeCoords, onUpdateElements, elements]);
+  }, [dragState, getCanvasRelativeCoords, onUpdateElements, marquee]);
 
   const handleMouseUp = useCallback(() => {
     if (marquee) {
@@ -165,164 +175,170 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
         const x2 = Math.max(marquee.x1, marquee.x2);
         const y2 = Math.max(marquee.y1, marquee.y2);
 
-        if (x2 - x1 > 5 && y2 - y1 > 5) {
-          const selected = elements
-            .filter(el => {
-              const elX2 = el.x + el.width;
-              const elY2 = el.y + el.height;
-              return x1 < elX2 && x2 > el.x && y1 < elY2 && y2 > el.y;
-            })
-            .map(el => el.id);
-          onSelectElements(selected);
-        }
+        const selectedIds = elements.filter(el => 
+            !el.locked &&
+            el.x < x2 && el.x + el.width > x1 &&
+            el.y < y2 && el.y + el.height > y1
+        ).map(el => el.id);
+        onSelectElements(selectedIds);
     }
     setDragState(null);
     setMarquee(null);
   }, [marquee, elements, onSelectElements]);
 
   useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => handleMouseMove(e);
-    const handleGlobalMouseUp = () => handleMouseUp();
-
-    if (dragState || marquee) {
-        window.addEventListener('mousemove', handleGlobalMouseMove);
-        window.addEventListener('mouseup', handleGlobalMouseUp);
-    }
-
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
     return () => {
-        window.removeEventListener('mousemove', handleGlobalMouseMove);
-        window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
-}, [dragState, marquee, handleMouseMove, handleMouseUp]);
+  }, [handleMouseMove, handleMouseUp]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-        if ((e.target as HTMLElement).tagName.toLowerCase() === 'input') return;
+        const isEditingInput = (e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT';
+        if (isEditingInput) return;
 
-        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-        const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
-
-        if (ctrlKey && e.key === 'c') {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
             copyElements();
-        } else if (ctrlKey && e.key === 'v') {
+        } else if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
             pasteElements();
-        } else if (ctrlKey && e.key === 'd') {
+        } else if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
             e.preventDefault();
             duplicateElements();
-        } else if (e.key === 'Delete' || e.key === 'Backspace') {
-            if (selectedElementIds.length > 0) {
-              removeElements(selectedElementIds);
-            }
-        } else if (ctrlKey && e.key === 'a') {
+        } else if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
             e.preventDefault();
             selectAllElements();
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (selectedElementIds.length > 0) {
+                removeElements(selectedElementIds);
+            }
         }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedElementIds, copyElements, pasteElements, duplicateElements, removeElements, selectAllElements]);
+  }, [copyElements, pasteElements, duplicateElements, selectAllElements, removeElements, selectedElementIds]);
 
-  const getElementColorClass = (darkColor: string) => {
-      return theme === 'light' ? (DARK_TO_LIGHT_COLOR_MAP[darkColor] || 'bg-slate-200') : darkColor;
+  const getElementColorClass = (color: string) => {
+    if (theme === 'light') {
+      return DARK_TO_LIGHT_COLOR_MAP[color] || 'bg-slate-200';
+    }
+    return color;
   };
-  
-  const selectedElements = elements.filter(el => selectedElementIds.includes(el.id));
-  const BoundingBox = selectedElements.length > 0 ? selectedElements.reduce((acc, el) => {
-      return {
-          x: Math.min(acc.x, el.x),
-          y: Math.min(acc.y, el.y),
-          x2: Math.max(acc.x2, el.x + el.width),
-          y2: Math.max(acc.y2, el.y + el.height),
-      }
-  }, {x: Infinity, y: Infinity, x2: -Infinity, y2: -Infinity}) : null;
+
+  const getAnimationClass = (animation: AnimationType) => {
+      if (animation === AnimationType.PULSE) return 'animate-pulse';
+      if (animation === AnimationType.WAVE) return 'relative overflow-hidden';
+      return '';
+  }
+
+  const marqueeStyle = marquee ? {
+      left: Math.min(marquee.x1, marquee.x2),
+      top: Math.min(marquee.y1, marquee.y2),
+      width: Math.abs(marquee.x1 - marquee.x2),
+      height: Math.abs(marquee.y1 - marquee.y2),
+  } : {};
 
   return (
-    <div
-      ref={canvasRef}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onMouseDown={handleMouseDown}
-      className="relative flex-1 w-full h-full bg-slate-100 dark:bg-slate-900/70 overflow-hidden cursor-crosshair touch-none"
+    <div 
+        ref={canvasRef}
+        onMouseDown={handleMouseDown}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        className="w-full h-full bg-slate-100 dark:bg-slate-900 overflow-hidden relative select-none cursor-auto flex-1"
+        style={{
+            backgroundSize: '20px 20px',
+            backgroundImage: 'radial-gradient(circle, #E2E8F0 1px, rgba(0, 0, 0, 0) 1px)',
+        }}
     >
-      <div 
-        ref={dropTargetRef} 
-        className="absolute inset-0 bg-indigo-500/10 border-2 border-dashed border-indigo-400 rounded-2xl m-4 pointer-events-none hidden z-10"
-      >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400 font-medium">Drop to add element</div>
-      </div>
-      
-      {/* Canvas Elements */}
-      <div className="absolute top-0 left-0">
-        {elements.sort((a,b) => a.zIndex - b.zIndex).map(el => {
-            const animationClass = el.animation === AnimationType.PULSE ? 'animate-pulse' : el.animation === AnimationType.WAVE ? 'wave-animation' : '';
-            const isSelected = selectedElementIds.includes(el.id);
-            return (
+        <div className="dark:hidden absolute inset-0" style={{
+            backgroundSize: '20px 20px',
+            backgroundImage: 'radial-gradient(circle, #CBD5E1 1px, rgba(0, 0, 0, 0) 1px)',
+        }}></div>
+         <div className="hidden dark:block absolute inset-0" style={{
+            backgroundSize: '20px 20px',
+            backgroundImage: 'radial-gradient(circle, #334155 1px, rgba(0, 0, 0, 0) 1px)',
+        }}></div>
+
+      <div className="w-[600px] h-[400px] bg-white dark:bg-slate-800 shadow-lg rounded-lg overflow-hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+        {elements.map((el) => (
+          <div
+            key={el.id}
+            data-element-id={el.id}
+            className={`absolute ${getElementColorClass(el.color)} ${getAnimationClass(el.animation)} ${selectedElementIds.includes(el.id) ? '' : 'hover:ring-2 hover:ring-indigo-400/50'} ${el.locked ? 'cursor-not-allowed' : 'cursor-move'}`}
+            style={{
+              left: el.x,
+              top: el.y,
+              width: el.width,
+              height: el.height,
+              borderRadius: el.type === ElementType.CIRCLE ? '50%' : el.borderRadius,
+              zIndex: el.zIndex,
+              boxShadow: el.locked ? 'inset 0 0 0 1px rgba(239, 68, 68, 0.6)' : 'none'
+            }}
+          >
+            {el.animation === AnimationType.WAVE && (
+                <div className="absolute top-0 left-[-150%] h-full w-[150%] bg-gradient-to-r from-transparent via-white/40 dark:via-white/10 to-transparent animate-[wave_1.5s_infinite]"></div>
+            )}
+          </div>
+        ))}
+
+        {selectedElementIds.length === 1 && !elements.find(el => el.id === selectedElementIds[0])?.locked && (
+          <div
+            className="absolute border-2 border-indigo-500 pointer-events-none"
+            style={{
+              left: elements.find(el => el.id === selectedElementIds[0])!.x - 2,
+              top: elements.find(el => el.id === selectedElementIds[0])!.y - 2,
+              width: elements.find(el => el.id === selectedElementIds[0])!.width + 4,
+              height: elements.find(el => el.id === selectedElementIds[0])!.height + 4,
+              zIndex: 10000,
+            }}
+          >
+            {RESIZE_HANDLES.map(handle => (
               <div
-                  key={el.id}
-                  data-element-id={el.id}
-                  className={`absolute group cursor-move ${animationClass} ${isSelected ? 'z-30' : ''}`}
-                  style={{ left: el.x, top: el.y, width: el.width, height: el.height, zIndex: el.zIndex }}
-              >
-                  <div
-                      data-element-id={el.id}
-                      className={`w-full h-full ${getElementColorClass(el.color)}`}
-                      style={{ borderRadius: el.type === ElementType.CIRCLE ? '50%' : `${el.borderRadius}px` }}
-                  />
-                  {el.animation === AnimationType.WAVE && (
-                      <div className="absolute inset-0 wave-overlay" style={{ borderRadius: el.type === ElementType.CIRCLE ? '50%' : `${el.borderRadius}px` }}></div>
-                  )}
-              </div>
-            );
-        })}
+                key={handle}
+                data-resize-handle={handle}
+                className="absolute w-3 h-3 bg-white border border-indigo-500 rounded-full"
+                style={{
+                  top: handle.includes('t') ? -7 : handle.includes('b') ? 'auto' : '50%',
+                  bottom: handle.includes('b') ? -7 : 'auto',
+                  left: handle.includes('l') ? -7 : handle.includes('r') ? 'auto' : '50%',
+                  right: handle.includes('r') ? -7 : 'auto',
+                  transform: (handle.length === 1) ? (handle === 't' || handle === 'b' ? 'translate(-50%, 0)' : 'translate(0, -50%)') : 'none',
+                  marginTop: (handle.length === 1 && (handle === 't' || handle === 'b')) ? 0 : -7,
+                  marginLeft: (handle.length === 1 && (handle === 'l' || handle === 'r')) ? 0 : -7,
+                  cursor: handle.includes('t') ? (handle.includes('l') ? 'nwse-resize' : 'nesw-resize') : handle.includes('b') ? (handle.includes('l') ? 'nesw-resize' : 'nwse-resize') : handle.includes('r') || handle.includes('l') ? 'ew-resize' : 'ns-resize',
+                  pointerEvents: 'all',
+                }}
+              />
+            ))}
+          </div>
+        )}
+        {selectedElementIds.length > 1 && (
+            <div
+                className="absolute border-2 border-dashed border-indigo-500 pointer-events-none"
+                style={{
+                    left: Math.min(...elements.filter(e => selectedElementIds.includes(e.id)).map(e => e.x)) - 2,
+                    top: Math.min(...elements.filter(e => selectedElementIds.includes(e.id)).map(e => e.y)) - 2,
+                    width: Math.max(...elements.filter(e => selectedElementIds.includes(e.id)).map(e => e.x + e.width)) - Math.min(...elements.filter(e => selectedElementIds.includes(e.id)).map(e => e.x)) + 4,
+                    height: Math.max(...elements.filter(e => selectedElementIds.includes(e.id)).map(e => e.y + e.height)) - Math.min(...elements.filter(e => selectedElementIds.includes(e.id)).map(e => e.y)) + 4,
+                    zIndex: 9999,
+                }}
+            />
+        )}
       </div>
 
-      {/* Selection Box and Resize Handles */}
-      {selectedElementIds.length > 0 && BoundingBox && (
-          <div
-              className={`absolute pointer-events-none ring-2 ring-indigo-500 z-40 ${selectedElementIds.length > 1 ? 'ring-dashed' : ''}`}
-              style={{ left: BoundingBox.x - 2, top: BoundingBox.y - 2, width: BoundingBox.x2 - BoundingBox.x + 4, height: BoundingBox.y2 - BoundingBox.y + 4 }}
-          >
-              {selectedElementIds.length === 1 && RESIZE_HANDLES.map(handle => {
-                  const el = elements.find(e => e.id === selectedElementIds[0])!;
-                  let cursor = 'nesw-resize';
-                  if (handle === 't' || handle === 'b') cursor = 'ns-resize';
-                  if (handle === 'l' || handle === 'r') cursor = 'ew-resize';
-                  if (handle === 'tr' || handle === 'bl') cursor = 'nwse-resize';
-                  
-                  return (
-                      <div
-                          key={handle}
-                          data-resize-handle={handle}
-                          className="absolute w-2.5 h-2.5 bg-white border border-indigo-500 rounded-full pointer-events-auto"
-                          style={{
-                              cursor,
-                              top: handle.includes('t') ? -5 : handle.includes('b') ? 'auto' : '50%',
-                              bottom: handle.includes('b') ? -5 : 'auto',
-                              left: handle.includes('l') ? -5 : handle.includes('r') ? 'auto' : '50%',
-                              right: handle.includes('r') ? -5 : 'auto',
-                              transform: (handle === 't' || handle === 'b' || handle === 'l' || handle === 'r') ? 'translate(-50%, -50%)' : undefined,
-                              marginTop: (handle === 't' || handle === 'b') ? 0 : -5,
-                              marginLeft: (handle === 'l' || handle === 'r') ? 0 : -5,
-                          }}
-                      />
-                  );
-              })}
-          </div>
-      )}
-      
-      {/* Marquee Selection */}
-      {marquee && (
-          <div
-              className="absolute bg-indigo-500/20 border border-indigo-500 z-50"
-              style={{
-                  left: Math.min(marquee.x1, marquee.x2),
-                  top: Math.min(marquee.y1, marquee.y2),
-                  width: Math.abs(marquee.x1 - marquee.x2),
-                  height: Math.abs(marquee.y1 - marquee.y2),
-              }}
-          />
-      )}
+       {marquee && (
+            <div 
+                className="absolute bg-indigo-500/20 border border-indigo-500 pointer-events-none"
+                style={marqueeStyle}
+            />
+        )}
+
+      <div ref={dropTargetRef} className="hidden absolute inset-0 bg-indigo-500/10 border-2 border-dashed border-indigo-500 rounded-lg m-4 pointer-events-none z-30">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-500 font-semibold">Drop to add element</div>
+      </div>
     </div>
   );
 };
