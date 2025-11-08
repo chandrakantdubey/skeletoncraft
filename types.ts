@@ -7,6 +7,9 @@ export enum ElementType {
 export enum AnimationType {
   PULSE = 'pulse',
   WAVE = 'wave',
+  SPIN = 'spin',
+  FADE = 'fade',
+  BOUNCE = 'bounce',
   NONE = 'none',
 }
 
@@ -30,6 +33,7 @@ export interface SkeletonElement {
   animation: AnimationType;
   zIndex: number;
   locked: boolean;
+  animationDelay?: string; // Added for sequential animations
 }
 
 export enum PresetCategory {
@@ -43,6 +47,7 @@ export interface SkeletonPreset {
     elements: Omit<SkeletonElement, 'id' | 'zIndex' | 'locked'>[];
 }
 
+// FIX: Add missing LoaderSpinnerPreset type, which is used in CodeDisplayModal.tsx.
 export interface LoaderSpinnerPreset {
     name: string;
     html: string;

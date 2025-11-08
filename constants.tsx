@@ -9,6 +9,9 @@ export const TOOLBOX_ITEMS = [
 export const ANIMATION_OPTIONS = [
   { value: AnimationType.PULSE, label: 'Pulse' },
   { value: AnimationType.WAVE, label: 'Wave' },
+  { value: AnimationType.SPIN, label: 'Spin' },
+  { value: AnimationType.FADE, label: 'Fade' },
+  { value: AnimationType.BOUNCE, label: 'Bounce' },
   { value: AnimationType.NONE, label: 'None' },
 ];
 

@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
 import { SkeletonElement, ElementType, AnimationType, SkeletonPreset } from '../types';
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
@@ -7,8 +6,7 @@ import Canvas from '../components/Canvas';
 import PropertiesPanel from '../components/PropertiesPanel';
 import ExportModal from '../components/ExportModal';
 import LayersPanel from '../components/LayersPanel';
-import AIToolbar from '../components/AIToolbar';
-import { useHistoryState } from '../hooks/useHistoryState';
+import { useHistoryState } from '../components/useHistoryState';
 import { DARK_TO_LIGHT_COLOR_MAP } from '../constants';
 
 const LOCAL_STORAGE_KEY = 'skeleton-craft-elements';
@@ -23,7 +21,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialElements, onBack }) => {
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
   const [clipboard, setClipboard] = useState<SkeletonElement[]>([]);
   const [isExporting, setIsExporting] = useState(false);
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const isPresetLoad = useRef(initialElements.length > 0);
 
   useEffect(() => {
@@ -222,67 +219,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialElements, onBack }) => {
       });
   }, [selectedElementIds, setElements]);
 
-  const handleGenerateWithAI = async (imageData: string) => {
-    setIsGeneratingAI(true);
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-
-        const imagePart = { inlineData: { mimeType: 'image/jpeg', data: imageData } };
-        const textPart = { text: "Analyze this UI screenshot. Identify all placeholder elements like images, text lines, and buttons. Return a JSON array representing these elements as skeleton loaders. Each object must have 'type' ('rect', 'circle', or 'text'), 'x', 'y', 'width', and 'height' properties. All coordinates and dimensions should be relative to a 600x400 canvas. Do not include any explanation, just the raw JSON array." };
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [imagePart, textPart] },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            type: { type: Type.STRING, enum: ['rect', 'circle', 'text'] },
-                            x: { type: Type.NUMBER },
-                            y: { type: Type.NUMBER },
-                            width: { type: Type.NUMBER },
-                            height: { type: Type.NUMBER }
-                        },
-                        required: ['type', 'x', 'y', 'width', 'height']
-                    }
-                }
-            }
-        });
-        
-        const jsonString = response.text.trim();
-        const generatedLayout = JSON.parse(jsonString);
-
-        if (Array.isArray(generatedLayout)) {
-            const newElements = generatedLayout.map((item: any, i: number) => ({
-                id: `ai_el_${Date.now()}_${i}`,
-                type: item.type,
-                x: Math.round(item.x),
-                y: Math.round(item.y),
-                width: Math.round(item.width),
-                height: Math.round(item.height),
-                borderRadius: item.type === 'circle' ? Math.round(item.width/2) : (item.type === 'text' ? 4 : 8),
-                color: 'bg-slate-700',
-                animation: AnimationType.PULSE,
-                zIndex: i + 1,
-                locked: false,
-            }));
-            resetState(newElements);
-            selectAllElements();
-        } else {
-            throw new Error("Invalid format from AI");
-        }
-    } catch (error) {
-        console.error("AI Generation Failed:", error);
-        alert("Sorry, something went wrong while generating the layout. Please try again.");
-    } finally {
-        setIsGeneratingAI(false);
-    }
-  };
-
-
   const selectedElements = elements.filter(el => selectedElementIds.includes(el.id));
 
   return (
@@ -318,13 +254,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ initialElements, onBack }) => {
               removeElements={handleRemoveElements}
               selectAllElements={selectAllElements}
             />
-            <AIToolbar onGenerate={handleGenerateWithAI} isLoading={isGeneratingAI} />
-            {isGeneratingAI && (
-                <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm flex flex-col items-center justify-center z-30">
-                    <div className="w-16 h-16 border-4 border-slate-200 border-t-indigo-500 rounded-full animate-spin"></div>
-                    <p className="mt-4 text-white font-semibold">Generating layout with AI...</p>
-                </div>
-            )}
         </div>
         <PropertiesPanel
             selectedElements={selectedElements}

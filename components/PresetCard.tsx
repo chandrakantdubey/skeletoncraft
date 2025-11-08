@@ -1,13 +1,22 @@
 import React from 'react';
-import { SkeletonPreset, LoaderSpinnerPreset } from '../types';
+import { SkeletonPreset, SkeletonElement, AnimationType } from '../types';
 import { useTheme } from '../App';
 import { DARK_TO_LIGHT_COLOR_MAP } from '../constants';
 
-type PresetCardProps = 
-    | { type: 'skeleton'; preset: SkeletonPreset; onCustomize: () => void; onGetCode?: never; }
-    | { type: 'loader'; preset: LoaderSpinnerPreset; onGetCode: () => void; onCustomize?: never; };
+type PresetCardProps = {
+    preset: SkeletonPreset;
+    onCustomize: () => void;
+};
 
-const PresetCard: React.FC<PresetCardProps> = ({ type, preset, onCustomize, onGetCode }) => {
+// Keyframes are defined here for the preview animation within the card
+const animationStyles = `
+    @keyframes pulse { 50% { opacity: .5; } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes fade { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15%); } }
+`;
+
+const PresetCard: React.FC<PresetCardProps> = ({ preset, onCustomize }) => {
     const { theme } = useTheme();
 
     const getSkeletonColorClass = (darkColor: string) => {
@@ -17,58 +26,57 @@ const PresetCard: React.FC<PresetCardProps> = ({ type, preset, onCustomize, onGe
         return darkColor;
     };
 
-    const getLoaderStyle = (css: string) => {
-        const primaryColor = theme === 'light' ? '#4f46e5' : '#818cf8'; // indigo-600 / indigo-400
-        const secondaryColor = theme === 'light' ? '#e5e7eb' : '#4b5563'; // gray-200 / gray-600
-        const accentColor = theme === 'light' ? '#a5b4fc' : '#6366f1'; // indigo-300 / indigo-500
-        return css
-            .replace(/var\(--color-primary\)/g, primaryColor)
-            .replace(/var\(--color-secondary\)/g, secondaryColor)
-            .replace(/var\(--color-accent\)/g, accentColor);
-    };
+    const getAnimationStyle = (el: Omit<SkeletonElement, 'id' | 'zIndex' | 'locked'>): React.CSSProperties => {
+        const style: React.CSSProperties = {};
+        switch(el.animation) {
+             case AnimationType.PULSE:
+                style.animation = 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite';
+                break;
+             case AnimationType.SPIN:
+                style.animation = 'spin 1s linear infinite';
+                break;
+             case AnimationType.FADE:
+                style.animation = 'fade 1.5s ease-in-out infinite';
+                break;
+            case AnimationType.BOUNCE:
+                style.animation = 'bounce 1s ease-in-out infinite';
+                break;
+            default:
+                break;
+        }
+        if (el.animationDelay) {
+            style.animationDelay = el.animationDelay;
+        }
+        return style;
+    }
+
 
     return (
         <div className="group bg-white dark:bg-slate-800/50 rounded-xl shadow-md dark:shadow-lg hover:shadow-lg dark:hover:shadow-xl transition-all duration-300 ring-1 ring-slate-200 dark:ring-slate-700/50 flex flex-col overflow-hidden">
             <div className="h-48 flex items-center justify-center p-4 bg-slate-100 dark:bg-slate-900/50 relative overflow-hidden">
-                {type === 'skeleton' && (
-                    <div className="w-full h-full scale-[0.4] origin-center">
-                        <div className="relative w-[300px] h-[200px]">
-                            {(preset as SkeletonPreset).elements.map((el, i) => (
-                                <div key={i} className={`absolute ${getSkeletonColorClass(el.color)}`} style={{
-                                    left: el.x * 0.5, top: el.y * 0.5,
-                                    width: el.width * 0.5, height: el.height * 0.5,
-                                    borderRadius: el.borderRadius,
-                                }}></div>
-                            ))}
-                        </div>
+                <style>{animationStyles}</style>
+                <div className="w-full h-full scale-[0.5] origin-center">
+                    <div className="relative w-[600px] h-[400px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                        {preset.elements.map((el, i) => (
+                            <div key={i} className={`absolute ${getSkeletonColorClass(el.color)}`} style={{
+                                left: el.x, top: el.y,
+                                width: el.width, height: el.height,
+                                borderRadius: el.type === 'circle' ? '50%' : el.borderRadius,
+                                ...getAnimationStyle(el)
+                            }}></div>
+                        ))}
                     </div>
-                )}
-                {type === 'loader' && (
-                     <>
-                        <style>{getLoaderStyle((preset as LoaderSpinnerPreset).css)}</style>
-                        <div dangerouslySetInnerHTML={{ __html: (preset as LoaderSpinnerPreset).html }} />
-                    </>
-                )}
+                </div>
             </div>
             <div className="p-4 flex-1 flex flex-col justify-between">
                 <h3 className="font-semibold text-slate-800 dark:text-slate-200">{preset.name}</h3>
                 <div className="mt-4 flex items-center gap-2">
-                    {type === 'skeleton' && (
-                        <button 
-                            onClick={onCustomize}
-                            className="w-full px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-md hover:bg-indigo-500 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-indigo-500"
-                        >
-                            Customize
-                        </button>
-                    )}
-                     {type === 'loader' && (
-                        <button 
-                            onClick={onGetCode}
-                            className="w-full px-4 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-500/10 rounded-md hover:bg-indigo-200 dark:hover:bg-indigo-500/20 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-indigo-500"
-                        >
-                            Get Code
-                        </button>
-                    )}
+                    <button 
+                        onClick={onCustomize}
+                        className="w-full px-4 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-md hover:bg-indigo-500 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-800 focus:ring-indigo-500"
+                    >
+                        Customize
+                    </button>
                 </div>
             </div>
         </div>

@@ -1,10 +1,8 @@
-import React, { useState, Suspense, lazy } from 'react';
+import React, { useState } from 'react';
 import Header from '../components/Header';
-import { SkeletonPreset, LoaderSpinnerPreset, PresetCategory } from '../types';
+import { SkeletonPreset, PresetCategory } from '../types';
 import { SKELETON_PRESETS, LOADER_PRESETS, SPINNER_PRESETS } from '../lib/presets';
 import PresetCard from '../components/PresetCard';
-
-const LazyCodeDisplayModal = lazy(() => import('../components/CodeDisplayModal'));
 
 interface LandingPageProps {
   onStartEditing: (preset?: SkeletonPreset) => void;
@@ -12,7 +10,6 @@ interface LandingPageProps {
 
 const LandingPage: React.FC<LandingPageProps> = ({ onStartEditing }) => {
     const [activeTab, setActiveTab] = useState<PresetCategory>(PresetCategory.SKELETONS);
-    const [selectedLoader, setSelectedLoader] = useState<LoaderSpinnerPreset | null>(null);
 
     const TABS = [
         { name: PresetCategory.SKELETONS, count: SKELETON_PRESETS.length },
@@ -21,34 +18,30 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStartEditing }) => {
     ];
 
     const renderContent = () => {
+        let presets: SkeletonPreset[] = [];
+        let gridCols = 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3';
+
         switch (activeTab) {
             case PresetCategory.SKELETONS:
-                return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {SKELETON_PRESETS.map(preset => (
-                            <PresetCard key={preset.name} type="skeleton" preset={preset} onCustomize={() => onStartEditing(preset)} />
-                        ))}
-                    </div>
-                );
+                presets = SKELETON_PRESETS;
+                break;
             case PresetCategory.LOADERS:
-                 return (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {LOADER_PRESETS.map(preset => (
-                             <PresetCard key={preset.name} type="loader" preset={preset} onGetCode={() => setSelectedLoader(preset)} />
-                        ))}
-                    </div>
-                );
+                 presets = LOADER_PRESETS;
+                 gridCols = 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+                 break;
             case PresetCategory.SPINNERS:
-                return (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                        {SPINNER_PRESETS.map(preset => (
-                             <PresetCard key={preset.name} type="loader" preset={preset} onGetCode={() => setSelectedLoader(preset)} />
-                        ))}
-                    </div>
-                );
-            default:
-                return null;
+                presets = SPINNER_PRESETS;
+                gridCols = 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4';
+                break;
         }
+
+        return (
+             <div className={`grid ${gridCols} gap-6`}>
+                {presets.map(preset => (
+                    <PresetCard key={preset.name} preset={preset} onCustomize={() => onStartEditing(preset)} />
+                ))}
+            </div>
+        )
     }
 
   return (
@@ -91,14 +84,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onStartEditing }) => {
 
             {renderContent()}
         </main>
-        {selectedLoader && (
-            <Suspense fallback={<div>Loading...</div>}>
-                <LazyCodeDisplayModal
-                    preset={selectedLoader}
-                    onClose={() => setSelectedLoader(null)}
-                />
-            </Suspense>
-        )}
     </div>
   );
 };

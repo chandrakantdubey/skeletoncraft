@@ -23,6 +23,21 @@ type DragState =
 
 const RESIZE_HANDLES = ['tl', 'tr', 'bl', 'br', 't', 'b', 'l', 'r'];
 
+const animationStyles = `
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .animate-spin-custom { animation: spin 1s linear infinite; }
+
+    @keyframes fade { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+    .animate-fade-custom { animation: fade 1.5s ease-in-out infinite; }
+    
+    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15%); } }
+    .animate-bounce-custom { animation: bounce 1s ease-in-out infinite; }
+    
+    @keyframes wave { 0% { left: -150%; } 100% { left: 150%; } }
+    .animate-wave-custom { animation: wave 1.5s infinite; }
+`;
+
+
 const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectElements, onUpdateElements, onAddElement, copyElements, pasteElements, duplicateElements, removeElements, selectAllElements }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<DragState>(null);
@@ -230,6 +245,9 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
   const getAnimationClass = (animation: AnimationType) => {
       if (animation === AnimationType.PULSE) return 'animate-pulse';
       if (animation === AnimationType.WAVE) return 'relative overflow-hidden';
+      if (animation === AnimationType.SPIN) return 'animate-spin-custom';
+      if (animation === AnimationType.FADE) return 'animate-fade-custom';
+      if (animation === AnimationType.BOUNCE) return 'animate-bounce-custom';
       return '';
   }
 
@@ -253,6 +271,7 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
             backgroundImage: 'radial-gradient(circle, #E2E8F0 1px, rgba(0, 0, 0, 0) 1px)',
         }}
     >
+        <style>{animationStyles}</style>
         <div className="dark:hidden absolute inset-0" style={{
             backgroundSize: '20px 20px',
             backgroundImage: 'radial-gradient(circle, #CBD5E1 1px, rgba(0, 0, 0, 0) 1px)',
@@ -275,11 +294,12 @@ const Canvas: React.FC<CanvasProps> = ({ elements, selectedElementIds, onSelectE
               height: el.height,
               borderRadius: el.type === ElementType.CIRCLE ? '50%' : el.borderRadius,
               zIndex: el.zIndex,
-              boxShadow: el.locked ? 'inset 0 0 0 1px rgba(239, 68, 68, 0.6)' : 'none'
+              boxShadow: el.locked ? 'inset 0 0 0 1px rgba(239, 68, 68, 0.6)' : 'none',
+              animationDelay: el.animationDelay,
             }}
           >
             {el.animation === AnimationType.WAVE && (
-                <div className="absolute top-0 left-[-150%] h-full w-[150%] bg-gradient-to-r from-transparent via-white/40 dark:via-white/10 to-transparent animate-[wave_1.5s_infinite]"></div>
+                <div className="absolute top-0 left-[-150%] h-full w-[150%] bg-gradient-to-r from-transparent via-white/40 dark:via-white/10 to-transparent animate-wave-custom"></div>
             )}
           </div>
         ))}
